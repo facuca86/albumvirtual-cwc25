@@ -491,8 +491,68 @@ export default function PaniniAlbumCWC2025() {
               className={`rounded-3xl p-8 shadow-xl text-left active:scale-95 transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
               <div className="text-3xl font-black italic uppercase">Estadísticas</div>
             </button>
+            <button onClick={() => setCurrentView('otros-proyectos')}
+              className={`rounded-3xl p-8 shadow-xl text-left active:scale-95 transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
+              <div className="text-3xl font-black italic uppercase">Otros Proyectos</div>
+            </button>
           </div>
         )}
+
+        {/* OTROS PROYECTOS */}
+        {currentView === 'otros-proyectos' && (() => {
+          const PROYECTOS = [
+            {
+              id: 'paniniWorldCup2026',
+              label: 'Mundial 2026',
+              url: 'https://facuca86.github.io/albumvirtual/',
+              style: 'multicolor',
+            },
+            {
+              id: 'paniniWorldCup2022',
+              label: 'Mundial 2022 · Qatar',
+              url: 'https://facuca86.github.io/albumvirtual-2022/',
+              style: 'qatar',
+            },
+            {
+              id: 'paniniCWC2025',
+              label: 'Club World Cup 2025',
+              url: 'https://facuca86.github.io/albumvirtual-cwc25/',
+              style: 'cwc',
+            },
+          ];
+          const proyectosVisibles = PROYECTOS.filter(p => p.id !== albumConfig.id);
+          const getProyectoStyle = (style) => {
+            if (style === 'multicolor') return { background: 'linear-gradient(135deg, #e53e3e, #dd6b20, #d69e2e, #38a169, #3182ce, #805ad5)' };
+            if (style === 'qatar')      return { backgroundColor: '#6B0F1A', border: '2px solid #B8860B' };
+            if (style === 'cwc')        return { backgroundColor: '#000000', border: '2px solid #B8860B' };
+            return {};
+          };
+          const getProyectoClass = (style) => {
+            if (style === 'cwc') return 'text-yellow-400 font-black';
+            return 'text-white font-black';
+          };
+          return (
+            <div className={`rounded-3xl p-6 sm:p-8 shadow-xl max-w-2xl mx-auto transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-white' : 'bg-white'}`}>
+              <h2 className="text-3xl font-black italic uppercase mb-6">Otros Proyectos</h2>
+              <div className="flex flex-col gap-4">
+                {proyectosVisibles.map(proyecto => (
+                  <button
+                    key={proyecto.id}
+                    onClick={() => window.open(proyecto.url, '_blank')}
+                    style={getProyectoStyle(proyecto.style)}
+                    className={`rounded-3xl p-8 shadow-xl w-full text-left active:scale-95 transition-transform ${getProyectoClass(proyecto.style)}`}
+                  >
+                    <div className="text-3xl font-black italic uppercase">{proyecto.label}</div>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setCurrentView('home')}
+                className={`mt-6 px-6 py-3 rounded-2xl font-black transition-colors duration-300 ${darkMode ? 'bg-yellow-500 text-slate-900' : 'bg-amber-700 text-white'}`}
+              >← VOLVER</button>
+            </div>
+          );
+        })()}
 
         {/* STATS CLUBES */}
         {currentView === 'stats-selections' && (
