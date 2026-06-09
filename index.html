@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panini Album Virtual 2022</title>
+    <style>
+      body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f3f4f6; }
+      #root { min-height: 100vh; }
+      .loading { display:flex; align-items:center; justify-content:center; min-height:100vh; color:#374151; }
+
+      @keyframes stickerPaste {
+        0%   { transform: scale(1); }
+        35%  { transform: scale(1.18); box-shadow: 0 0 0 5px #4ade80, 0 0 14px #4ade8077; }
+        70%  { transform: scale(1.09); }
+        100% { transform: scale(1.02); }
+      }
+      .sticker-paste { animation: stickerPaste 0.42s cubic-bezier(.22,.68,0,1.2) forwards; position: relative; z-index: 10; }
+
+      @keyframes stickerPulse {
+        0%, 100% { box-shadow: 0 0 0 3px #f59e0b, 0 0 10px #f59e0b88; }
+        50%       { box-shadow: 0 0 0 7px #fbbf24, 0 0 20px #fbbf24bb; }
+      }
+      .sticker-pulse { animation: stickerPulse 0.9s ease-in-out infinite; position: relative; z-index: 10; }
+
+      @keyframes celebIn {
+        from { opacity: 0; transform: scale(0.72) translateY(48px); }
+        to   { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      .celebrate-card { animation: celebIn 0.48s cubic-bezier(.22,.68,0,1.2) forwards; }
+    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body>
+    <div id="root"><div class="loading">Cargando aplicación…</div></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script type="module">
+      const reactUrl             = 'https://esm.sh/react@18.3.1';
+      const reactDomUrl          = 'https://esm.sh/react-dom@18.3.1/client';
+      const firebaseAppUrl       = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+      const firebaseFirestoreUrl = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+      const makeModuleUrl = (code) => URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+
+      const transpile = (source, filename) => Babel.transform(source, {
+        filename,
+        presets: ['react', 'typescript'],
+        sourceType: 'module'
+      }).code;
+
+      const firebaseSrc = await fetch('./firebase_2022.js').then(r => r.text());
+      const firebasePatched = firebaseSrc
+        .replace(/from\s+['"]firebase\/app['"]/g,       `from '${firebaseAppUrl}'`)
+        .replace(/from\s+['"]firebase\/firestore['"]/g, `from '${firebaseFirestoreUrl}'`);
+      const firebaseUrl = makeModuleUrl(firebasePatched);
+
+      const playerNamesSrc = await fetch('./playerNames_2022.js').then(r => r.text());
+      const playerNamesUrl = makeModuleUrl(playerNamesSrc);
+
+      const teamThemesSrc = await fetch('./teamThemes_2022.js').then(r => r.text());
+      const teamThemesUrl = makeModuleUrl(teamThemesSrc);
+
+      const albumConfigSrc = await fetch('./albumConfig_2022.js').then(r => r.text());
+      const albumConfigUrl = makeModuleUrl(albumConfigSrc);
+
+      const appSrc = await fetch('./panini_virtual_album_2022_app.jsx').then(r => r.text());
+      const appPatched = appSrc
+        .replace(/from\s+['"]react['"]/g,                          `from '${reactUrl}'`)
+        .replace(/from\s+['"]firebase\/firestore['"]/g,            `from '${firebaseFirestoreUrl}'`)
+        .replace(/from\s+['"]\.\/firebase_2022['"]/g,              `from '${firebaseUrl}'`)
+        .replace(/from\s+['"]\.\/playerNames_2022(?:\.js)?['"]/g,  `from '${playerNamesUrl}'`)
+        .replace(/from\s+['"]\.\/teamThemes_2022(?:\.js)?['"]/g,   `from '${teamThemesUrl}'`)
+        .replace(/from\s+['"]\.\/albumConfig_2022(?:\.js)?['"]/g,  `from '${albumConfigUrl}'`);
+      const appUrl = makeModuleUrl(transpile(appPatched, 'panini_virtual_album_2022_app.jsx'));
+
+      const [{ default: PaniniAlbum2022 }, { createRoot }, React] = await Promise.all([
+        import(appUrl),
+        import(reactDomUrl),
+        import(reactUrl)
+      ]);
+
+      createRoot(document.getElementById('root')).render(React.createElement(PaniniAlbum2022));
+    </script>
+  </body>
+</html>

@@ -1,0 +1,41 @@
+export const teamThemes = {
+  // Equipos presentes en 2026 — mismos gradientes
+  QAT: { gradient: "from-white via-rose-400 to-red-600" },
+  ECU: { gradient: "from-yellow-400 via-blue-500 to-red-500" },
+  SEN: { gradient: "from-green-500 via-yellow-400 to-red-500" },
+  NED: { gradient: "from-orange-500 via-white to-blue-600" },
+  ENG: { gradient: "from-white via-red-500 to-white" },
+  IRN: { gradient: "from-green-500 via-white to-red-500" },
+  USA: { gradient: "from-blue-600 via-blue-400 to-red-500" },
+  ARG: { gradient: "from-sky-500 via-sky-200 to-sky-400" },
+  KSA: { gradient: "from-green-600 via-green-400 to-white" },
+  MEX: { gradient: "from-green-600 via-white to-red-500" },
+  FRA: { gradient: "from-blue-600 via-white to-red-500" },
+  AUS: { gradient: "from-blue-600 via-yellow-400 to-blue-500" },
+  TUN: { gradient: "from-white via-red-500 to-red-600" },
+  ESP: { gradient: "from-red-600 via-yellow-400 to-red-600" },
+  GER: { gradient: "from-white via-red-500 to-yellow-400" },
+  JPN: { gradient: "from-white via-red-500 to-blue-600" },
+  BEL: { gradient: "from-slate-900 via-yellow-400 to-red-500", dark: true },
+  CAN: { gradient: "from-white via-red-500 to-red-600" },
+  MAR: { gradient: "from-red-500 via-red-400 to-green-500" },
+  CRO: { gradient: "from-red-500 via-white to-blue-600" },
+  BRA: { gradient: "from-green-500 via-yellow-300 to-green-400" },
+  SUI: { gradient: "from-white via-red-500 to-red-600" },
+  POR: { gradient: "from-green-600 via-red-500 to-green-500" },
+  GHA: { gradient: "from-red-500 via-yellow-400 to-green-500" },
+  URU: { gradient: "from-sky-500 via-white to-sky-400" },
+  KOR: { gradient: "from-white via-red-500 to-blue-600" },
+
+  // Equipos nuevos no presentes en 2026
+  WAL: { gradient: "from-red-600 via-red-400 to-yellow-400" },
+  POL: { gradient: "from-white via-red-500 to-red-600" },
+  DEN: { gradient: "from-red-600 via-white to-red-600" },
+  CRC: { gradient: "from-blue-600 via-white to-red-500" },
+  SRB: { gradient: "from-red-600 via-blue-600 to-white" },
+  CMR: { gradient: "from-green-500 via-red-500 to-yellow-400" },
+
+  // Especiales
+  FWCI2022: { gradient: "from-yellow-500 via-red-700 to-yellow-600", dark: true },
+  FWCH2022: { gradient: "from-yellow-400 via-amber-600 to-yellow-500", dark: true },
+};
