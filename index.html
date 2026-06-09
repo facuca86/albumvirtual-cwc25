@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Panini Album Virtual 2022</title>
+    <title>Panini Album Virtual CWC 2025</title>
     <style>
       body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f3f4f6; }
       #root { min-height: 100vh; }
@@ -11,15 +11,15 @@
 
       @keyframes stickerPaste {
         0%   { transform: scale(1); }
-        35%  { transform: scale(1.18); box-shadow: 0 0 0 5px #4ade80, 0 0 14px #4ade8077; }
+        35%  { transform: scale(1.18); box-shadow: 0 0 0 5px #ffd700, 0 0 14px #ffd70077; }
         70%  { transform: scale(1.09); }
         100% { transform: scale(1.02); }
       }
       .sticker-paste { animation: stickerPaste 0.42s cubic-bezier(.22,.68,0,1.2) forwards; position: relative; z-index: 10; }
 
       @keyframes stickerPulse {
-        0%, 100% { box-shadow: 0 0 0 3px #f59e0b, 0 0 10px #f59e0b88; }
-        50%       { box-shadow: 0 0 0 7px #fbbf24, 0 0 20px #fbbf24bb; }
+        0%, 100% { box-shadow: 0 0 0 3px #ffd700, 0 0 10px #ffd70088; }
+        50%       { box-shadow: 0 0 0 7px #ffec8b, 0 0 20px #ffec8bbb; }
       }
       .sticker-pulse { animation: stickerPulse 0.9s ease-in-out infinite; position: relative; z-index: 10; }
 
@@ -49,38 +49,38 @@
         sourceType: 'module'
       }).code;
 
-      const firebaseSrc = await fetch('./firebase_2022.js').then(r => r.text());
+      const firebaseSrc = await fetch('./firebase_CWC2025.js').then(r => r.text());
       const firebasePatched = firebaseSrc
         .replace(/from\s+['"]firebase\/app['"]/g,       `from '${firebaseAppUrl}'`)
         .replace(/from\s+['"]firebase\/firestore['"]/g, `from '${firebaseFirestoreUrl}'`);
       const firebaseUrl = makeModuleUrl(firebasePatched);
 
-      const playerNamesSrc = await fetch('./playerNames_2022.js').then(r => r.text());
+      const playerNamesSrc = await fetch('./playerNames_CWC2025.js').then(r => r.text());
       const playerNamesUrl = makeModuleUrl(playerNamesSrc);
 
-      const teamThemesSrc = await fetch('./teamThemes_2022.js').then(r => r.text());
+      const teamThemesSrc = await fetch('./teamThemes_CWC2025.js').then(r => r.text());
       const teamThemesUrl = makeModuleUrl(teamThemesSrc);
 
-      const albumConfigSrc = await fetch('./albumConfig_2022.js').then(r => r.text());
+      const albumConfigSrc = await fetch('./albumConfig_CWC2025.js').then(r => r.text());
       const albumConfigUrl = makeModuleUrl(albumConfigSrc);
 
-      const appSrc = await fetch('./panini_virtual_album_2022_app.jsx').then(r => r.text());
+      const appSrc = await fetch('./panini_virtual_album_cwc2025_app.jsx').then(r => r.text());
       const appPatched = appSrc
-        .replace(/from\s+['"]react['"]/g,                          `from '${reactUrl}'`)
-        .replace(/from\s+['"]firebase\/firestore['"]/g,            `from '${firebaseFirestoreUrl}'`)
-        .replace(/from\s+['"]\.\/firebase_2022['"]/g,              `from '${firebaseUrl}'`)
-        .replace(/from\s+['"]\.\/playerNames_2022(?:\.js)?['"]/g,  `from '${playerNamesUrl}'`)
-        .replace(/from\s+['"]\.\/teamThemes_2022(?:\.js)?['"]/g,   `from '${teamThemesUrl}'`)
-        .replace(/from\s+['"]\.\/albumConfig_2022(?:\.js)?['"]/g,  `from '${albumConfigUrl}'`);
-      const appUrl = makeModuleUrl(transpile(appPatched, 'panini_virtual_album_2022_app.jsx'));
+        .replace(/from\s+['"]react['"]/g,                                    `from '${reactUrl}'`)
+        .replace(/from\s+['"]firebase\/firestore['"]/g,                      `from '${firebaseFirestoreUrl}'`)
+        .replace(/from\s+['"]\.\/firebase_CWC2025['"]/g,                     `from '${firebaseUrl}'`)
+        .replace(/from\s+['"]\.\/playerNames_CWC2025(?:\.js)?['"]/g,         `from '${playerNamesUrl}'`)
+        .replace(/from\s+['"]\.\/teamThemes_CWC2025(?:\.js)?['"]/g,          `from '${teamThemesUrl}'`)
+        .replace(/from\s+['"]\.\/albumConfig_CWC2025(?:\.js)?['"]/g,         `from '${albumConfigUrl}'`);
+      const appUrl = makeModuleUrl(transpile(appPatched, 'panini_virtual_album_cwc2025_app.jsx'));
 
-      const [{ default: PaniniAlbum2022 }, { createRoot }, React] = await Promise.all([
+      const [{ default: PaniniAlbumCWC2025 }, { createRoot }, React] = await Promise.all([
         import(appUrl),
         import(reactDomUrl),
         import(reactUrl)
       ]);
 
-      createRoot(document.getElementById('root')).render(React.createElement(PaniniAlbum2022));
+      createRoot(document.getElementById('root')).render(React.createElement(PaniniAlbumCWC2025));
     </script>
   </body>
 </html>
