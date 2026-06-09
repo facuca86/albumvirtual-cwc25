@@ -538,7 +538,7 @@ export default function PaniniAlbumCWC2025() {
                 {proyectosVisibles.map(proyecto => (
                   <button
                     key={proyecto.id}
-                    onClick={() => window.open(proyecto.url, '_blank')}
+                    onClick={() => { window.location.href = proyecto.url; }}
                     style={getProyectoStyle(proyecto.style)}
                     className={`rounded-3xl p-8 shadow-xl w-full text-left active:scale-95 transition-transform ${getProyectoClass(proyecto.style)}`}
                   >
