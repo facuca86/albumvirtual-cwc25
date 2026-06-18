@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { db, doc, getDoc, setDoc } from './firebase_CWC2025';
+import { db, doc, getDoc, setDoc, onSnapshot } from './firebase_CWC2025';
 import { playerNames } from './playerNames_CWC2025';
 import { teamThemes } from './teamThemes_CWC2025';
 import { albumConfig, codeToNumber, numberToCode } from './albumConfig_CWC2025';
@@ -98,6 +98,9 @@ export default function PaniniAlbumCWC2025() {
   const [searchOpen, setSearchOpen]             = useState(false);
   const [searchQuery, setSearchQuery]           = useState('');
   const isInitialLoad = useRef(true);
+  const [repetidasSelected, setRepetidasSelected] = useState(new Set());
+  const [repetidasPending, setRepetidasPending] = useState([]);
+  const [repetidasConfirmSelected, setRepetidasConfirmSelected] = useState(false);
 
   // ── Load progress ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -491,12 +494,136 @@ export default function PaniniAlbumCWC2025() {
               className={`rounded-3xl p-8 shadow-xl text-left active:scale-95 transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
               <div className="text-3xl font-black italic uppercase">Estadísticas</div>
             </button>
+            <button onClick={() => setCurrentView('repetidas')} className={`rounded-3xl p-6 text-left font-black text-lg cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-lg ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
+              🔁<br/>
+              <span className="text-2xl">REPETIDAS</span><br/>
+              <span className="text-sm font-medium opacity-70">Gestioná tus figuritas repetidas</span>
+            </button>
             <button onClick={() => setCurrentView('otros-proyectos')}
               className={`rounded-3xl p-8 shadow-xl text-left active:scale-95 transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
               <div className="text-3xl font-black italic uppercase">Otros Proyectos</div>
             </button>
           </div>
         )}
+
+      {/* REPETIDAS INTERACTIVO */}
+      {currentView === 'repetidas' && (() => {
+        const repetidasGrouped = (() => {
+          const byTeam = {};
+          for (const [code, value] of Object.entries(completed)) {
+            if (value !== 'repeated') continue;
+            const team = getTeamForCode(code);
+            if (!team) continue;
+            if (!byTeam[team]) byTeam[team] = [];
+            byTeam[team].push(code);
+          }
+          return teams.filter(t => byTeam[t]).map(t => ({ team: t, info: teamData[t], codes: byTeam[t] }));
+        })();
+        const totalRepetidas = Object.values(completed).filter(v => v === 'repeated').length;
+        const handleToggle = (code) => {
+          setRepetidasSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(code)) next.delete(code); else next.add(code);
+            return next;
+          });
+        };
+        const handleConfirmar = () => {
+          if (repetidasSelected.size === 0) return;
+          if (!window.confirm(`¿Marcar ${repetidasSelected.size} figurita${repetidasSelected.size !== 1 ? 's' : ''} como pegadas? Pasarán de repetidas a pegadas.`)) return;
+          const newCompleted = { ...completed };
+          const confirmed = [];
+          for (const code of repetidasSelected) {
+            if (newCompleted[code] === 'repeated') { newCompleted[code] = true; confirmed.push(code); }
+          }
+          setCompleted(newCompleted);
+          setRepetidasPending(prev => [...prev, ...confirmed]);
+          setRepetidasSelected(new Set());
+        };
+        const handleGuardar = async () => {
+          if (repetidasPending.length === 0) return;
+          if (!window.confirm(`¿Confirmar? Se guardarán ${repetidasPending.length} cambio${repetidasPending.length !== 1 ? 's' : ''}.`)) return;
+          try {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(completed));
+            if (progressDocRef) await setDoc(progressDocRef, { stickers: completed });
+          } catch (err) { console.error(err); }
+          setRepetidasPending([]);
+        };
+        const handleVolver = () => {
+          if (repetidasSelected.size > 0 || repetidasPending.length > 0) {
+            if (!window.confirm('Tenés cambios sin guardar. ¿Salir de todas formas?')) return;
+          }
+          setRepetidasSelected(new Set());
+          setRepetidasPending([]);
+          setCurrentView('home');
+        };
+        return (
+          <div className={`rounded-3xl p-6 sm:p-8 shadow-xl max-w-2xl mx-auto transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-white' : 'bg-white'}`}>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-3xl font-black italic uppercase">Repetidas</h2>
+                <div className={`text-sm font-black mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{totalRepetidas} figurita{totalRepetidas !== 1 ? 's' : ''} repetida{totalRepetidas !== 1 ? 's' : ''}</div>
+              </div>
+              <button onClick={() => setShowQR(true)} className="bg-purple-600 text-white px-4 py-2 rounded-xl font-black text-sm">COMPARTIR QR</button>
+            </div>
+            {repetidasGrouped.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-4xl mb-3">🙌</div>
+                <div className="font-black text-xl">¡No hay repetidas!</div>
+                <div className={`mt-2 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Cuando tengas figuritas repetidas aparecerán acá.</div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {repetidasGrouped.map(({ team, info, codes }) => (
+                  <div key={team} className={`rounded-2xl p-4 ${darkMode ? 'bg-black/20' : 'bg-slate-50'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl leading-none">{info?.flag || '🏳️'}</span>
+                      <div>
+                        <div className="font-black uppercase text-sm">{info?.name || team}</div>
+                        <div className={`text-[10px] uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>{codes.filter(c => repetidasSelected.has(c)).length} / {codes.length} sel.</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {codes.map(code => {
+                        const isSelected = repetidasSelected.has(code);
+                        return (
+                          <button key={code} onClick={() => handleToggle(code)}
+                            className={`text-xs font-black px-3 py-1.5 rounded-xl transition-all active:scale-95 ${isSelected ? 'bg-slate-400 text-white' : 'bg-slate-600 text-white'}`}>
+                            {isSelected ? '✓ ' : ''}{code}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {repetidasPending.length > 0 && (
+              <div className={`mt-4 p-3 rounded-xl text-sm font-black ${darkMode ? 'bg-green-900 text-green-300' : 'bg-green-50 text-green-700'}`}>
+                {repetidasPending.length} cambio{repetidasPending.length !== 1 ? 's' : ''} confirmado{repetidasPending.length !== 1 ? 's' : ''} — pendiente{repetidasPending.length !== 1 ? 's' : ''} de guardar
+              </div>
+            )}
+            <div className="mt-6 flex flex-wrap gap-3">
+              {repetidasSelected.size > 0 && (
+                <button onClick={handleConfirmar} className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black">
+                  CONFIRMAR ({repetidasSelected.size})
+                </button>
+              )}
+              {repetidasPending.length > 0 ? (
+                <button onClick={handleGuardar} className="bg-green-600 text-white px-6 py-3 rounded-2xl font-black">
+                  GUARDAR ({repetidasPending.length})
+                </button>
+              ) : (
+                <button disabled className="bg-slate-300 text-slate-500 px-6 py-3 rounded-2xl font-black cursor-not-allowed opacity-60">
+                  SIN CAMBIOS
+                </button>
+              )}
+              <button onClick={handleVolver} className={`px-6 py-3 rounded-2xl font-black ${darkMode ? 'bg-slate-700 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                ← VOLVER
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
         {/* OTROS PROYECTOS */}
         {currentView === 'otros-proyectos' && (() => {
@@ -768,7 +895,6 @@ export default function PaniniAlbumCWC2025() {
             <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-[#3a2a00]' : 'border-slate-200'} flex flex-wrap gap-3`}>
               <button onClick={() => { setShowStats(false); setCurrentView('stats-selections'); }}
                 className="bg-amber-700 text-white px-6 py-3 rounded-2xl font-black">Estadísticas Clubes</button>
-              <button onClick={() => setShowQR(true)} className="bg-purple-600 text-white px-6 py-3 rounded-2xl font-black">Generar QR</button>
               <button onClick={() => setShowStats(false)}
                 className={`px-6 py-3 rounded-2xl font-black ${darkMode ? 'bg-[#3a2a00] text-white' : 'bg-slate-300 text-slate-800'}`}>Cerrar</button>
             </div>
