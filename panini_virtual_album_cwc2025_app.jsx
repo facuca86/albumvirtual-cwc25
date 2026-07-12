@@ -1012,37 +1012,50 @@ function TeamPanel({ stickers, currentTeam, currentTeamInfo, darkMode, toggleSti
     );
   };
 
+  // Cada hoja del álbum tiene 9 figuritas (grilla 3×3). Las brillantes/plateadas
+  // caen siempre en posiciones múltiplo de 3, por lo que quedan naturalmente
+  // alineadas en la tercera columna, una debajo de la otra, tal como en el álbum físico.
+  const STICKERS_PER_SHEET = 9;
+  const leftCount    = Math.min(STICKERS_PER_SHEET, stickers.length);
+  const leftStickers  = stickers.slice(0, leftCount);
+  const rightStickers = stickers.slice(leftCount);
+
+  const sheets = [];
+  for (let i = 0; i < stickers.length; i += STICKERS_PER_SHEET) {
+    sheets.push(stickers.slice(i, i + STICKERS_PER_SHEET));
+  }
+
   return (
     <>
       {/* Mobile */}
-      <div className={`lg:hidden col-span-2 p-3 ${bgClass}`}>
-        <div className="grid grid-cols-4 gap-2">
-          {stickers.map(s => (
-            <Sticker key={s.code} sticker={s} currentTeam={currentTeam} onToggle={toggleSticker}
-              darkMode={darkMode} justPasted={justPastedCode===s.code} highlighted={highlightCode===s.code} />
-          ))}
-          {teamGroups[currentTeam] && (
-            <div className="col-span-3"><GroupBox /></div>
-          )}
-        </div>
+      <div className={`lg:hidden col-span-2 p-3 ${bgClass} space-y-4`}>
+        {sheets.map((sheet, i) => (
+          <div key={i} className="grid grid-cols-3 gap-2">
+            {sheet.map(s => (
+              <Sticker key={s.code} sticker={s} currentTeam={currentTeam} onToggle={toggleSticker}
+                darkMode={darkMode} justPasted={justPastedCode===s.code} highlighted={highlightCode===s.code} />
+            ))}
+          </div>
+        ))}
+        {teamGroups[currentTeam] && <GroupBox />}
       </div>
 
       {/* Desktop izquierda */}
-      <div className={`p-3 sm:p-8 border-b lg:border-b-0 lg:border-r transition-colors duration-300 ${darkMode?'border-[#3a2a00]':'border-slate-300'} ${bgClass} hidden lg:block`}>
-        <div className="grid grid-cols-4 gap-2 sm:gap-4">
-          <div className="col-span-2 hidden lg:block">
-            <div className={`text-3xl sm:text-5xl font-black uppercase leading-none mb-4 break-words`}>
-              {currentTeamInfo.name}
-            </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 mb-4 text-center sm:text-left">
-              <div className="text-5xl sm:text-6xl">{currentTeamInfo.flag}</div>
-              <div className={`font-black uppercase text-[10px] sm:text-sm leading-tight max-w-[180px]`}>
-                {currentTeamInfo.federation}
-              </div>
+      <div className={`p-3 sm:p-8 border-b lg:border-b-0 lg:border-r transition-colors duration-300 ${darkMode?'border-[#3a2a00]':'border-slate-300'} ${bgClass} hidden lg:flex lg:flex-col lg:gap-4`}>
+        <div className="hidden lg:block">
+          <div className={`text-3xl sm:text-5xl font-black uppercase leading-none mb-4 break-words`}>
+            {currentTeamInfo.name}
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 mb-4 text-center sm:text-left">
+            <div className="text-5xl sm:text-6xl">{currentTeamInfo.flag}</div>
+            <div className={`font-black uppercase text-[10px] sm:text-sm leading-tight max-w-[180px]`}>
+              {currentTeamInfo.federation}
             </div>
           </div>
-          {/* Escudo + jugadores 2–9 */}
-          {stickers.slice(0, 10).map(s => (
+        </div>
+        {/* Escudo + jugadores — 9 figuritas por hoja */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          {leftStickers.map(s => (
             <Sticker key={s.code} sticker={s} currentTeam={currentTeam} onToggle={toggleSticker}
               darkMode={darkMode} justPasted={justPastedCode===s.code} highlighted={highlightCode===s.code} />
           ))}
@@ -1050,14 +1063,14 @@ function TeamPanel({ stickers, currentTeam, currentTeamInfo, darkMode, toggleSti
       </div>
 
       {/* Desktop derecha */}
-      <div className={`p-3 sm:p-8 ${bgClass} hidden lg:block`}>
-        <div className="grid grid-cols-4 gap-2 sm:gap-4">
-          {stickers.slice(10).map(s => (
+      <div className={`p-3 sm:p-8 ${bgClass} hidden lg:flex lg:flex-col lg:gap-4`}>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          {rightStickers.map(s => (
             <Sticker key={s.code} sticker={s} currentTeam={currentTeam} onToggle={toggleSticker}
               darkMode={darkMode} justPasted={justPastedCode===s.code} highlighted={highlightCode===s.code} />
           ))}
-          {teamGroups[currentTeam] && <GroupBox />}
         </div>
+        {teamGroups[currentTeam] && <GroupBox />}
       </div>
     </>
   );
@@ -1070,6 +1083,8 @@ function Sticker({ sticker, onToggle, currentTeam, darkMode = false, justPasted 
   const isPlayerSticker = sticker.type === 'player';
   const isShieldSticker = sticker.type === 'shield';
   const isBrillante     = sticker.type === 'brillante' || sticker.type === 'panini';
+  const brillanteCollected = isBrillante && sticker.completed && !sticker.repeated;
+  const brillantePending   = isBrillante && !sticker.completed && !sticker.repeated;
 
   const decorColor = sticker.repeated ? '#94a3b8' : sticker.completed ? '#4ade80' : '#cbd5e1';
 
@@ -1082,12 +1097,20 @@ function Sticker({ sticker, onToggle, currentTeam, darkMode = false, justPasted 
   const repeatedCodeClass  = darkMode ? 'text-slate-700 font-extrabold' : 'text-slate-100 font-extrabold';
   const repeatedLabelClass = darkMode ? 'text-slate-800 font-extrabold' : 'text-slate-100';
 
-  // Brillante: gradiente dorado. Panini: gradiente plateado.
-  const brillanteStyle = isBrillante && !sticker.repeated ? {
+  // Brillante/Panini: el gradiente metálico sólo se muestra una vez marcada como
+  // conseguida. Mientras está pendiente se ve un contorno punteado tenue, para que
+  // se note claramente la diferencia entre "pendiente" y "conseguida".
+  const brillanteStyle = brillanteCollected ? {
     background: sticker.type === 'panini'
       ? 'linear-gradient(135deg, #c0c0c0, #f8f8f8, #a8a8a8, #e8e8e8, #c0c0c0)'
       : 'linear-gradient(135deg, #92650a, #ffd700, #b8860b, #ffe680, #92650a)',
     borderColor: sticker.type === 'panini' ? '#a0a0a0' : '#ffd700',
+  } : brillantePending ? {
+    background: sticker.type === 'panini'
+      ? 'linear-gradient(135deg, rgba(192,192,192,0.14), rgba(248,248,248,0.05))'
+      : 'linear-gradient(135deg, rgba(255,215,0,0.14), rgba(255,215,0,0.05))',
+    borderColor: sticker.type === 'panini' ? '#a0a0a0' : '#b8860b',
+    borderStyle: 'dashed',
   } : undefined;
 
   const animClass = justPasted ? 'sticker-paste' : highlighted ? 'sticker-pulse' : '';
@@ -1101,11 +1124,18 @@ function Sticker({ sticker, onToggle, currentTeam, darkMode = false, justPasted 
       style={brillanteStyle}
       className={`relative border-2 rounded-xl sm:rounded-2xl p-2 sm:p-4 w-full flex items-center justify-center text-center transition active:opacity-60 ${isHoriz ? 'aspect-[3/2]' : 'aspect-[2/3]'} ${
         sticker.repeated ? repeatedBg :
-        isBrillante ? '' :
+        isBrillante ? (brillantePending ? emptyBg : '') :
         sticker.completed ? completedBg :
         emptyBg
       } ${sticker.completed || sticker.repeated ? 'border-[4px] scale-[1.02]' : 'border-2'} ${animClass}`}
     >
+      {brillanteCollected && (
+        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-green-500 border-2 border-white shadow flex items-center justify-center z-10">
+          <svg viewBox="0 0 20 20" className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-white" aria-hidden="true">
+            <path d="M8 13.5 4.5 10l-1.4 1.4L8 16.3l9-9L15.6 6z" />
+          </svg>
+        </div>
+      )}
       {isPlayerSticker && (
         <svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={svgStyle}>
           <circle cx="50" cy="35" r="22" fill={decorColor} />
@@ -1121,7 +1151,8 @@ function Sticker({ sticker, onToggle, currentTeam, darkMode = false, justPasted 
         {/* Número visible (protagonista) */}
         <div className={`text-sm sm:text-base font-black leading-none mb-0.5 ${
           sticker.repeated ? (darkMode?'text-slate-700':'text-slate-200') :
-          isBrillante ? (sticker.type==='panini'?'text-slate-600':'text-amber-900') :
+          brillanteCollected ? (sticker.type==='panini'?'text-slate-600':'text-amber-900') :
+          brillantePending ? (darkMode?'text-yellow-700':'text-amber-600') :
           sticker.completed ? 'text-green-700 font-extrabold' :
           darkMode ? 'text-yellow-600' : 'text-slate-400'
         }`}>
