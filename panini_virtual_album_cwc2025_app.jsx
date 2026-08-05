@@ -21,6 +21,16 @@ const progressDocRef        = db ? doc(db, 'albumProgress', albumConfig.id) : nu
 const settingsDocRef        = db ? doc(db, 'albumSettings', albumConfig.id) : null;
 const progressHistoryDocRef = db ? doc(db, 'albumProgressHistory', albumConfig.id) : null;
 
+const OTROS_PROYECTOS_TOTALS = {
+  paniniWorldCup2026: 981,
+  paniniWorldCup2022: 638,
+  paniniCWC2025: 550,
+  paniniRussia2018: 670,
+  paniniBrazil2014: 640,
+  paniniSouthAfrica2010: 640,
+  paniniGermany2006: 597,
+};
+
 const formatDateTime = (date) => {
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -141,6 +151,7 @@ export default function PaniniAlbumCWC2025() {
   const [repetidasSelected, setRepetidasSelected] = useState(new Set());
   const [repetidasPending, setRepetidasPending] = useState([]);
   const [repetidasConfirmSelected, setRepetidasConfirmSelected] = useState(false);
+  const [otrosProyectosProgress, setOtrosProyectosProgress] = useState({});
 
   // ── Load progress ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -194,6 +205,33 @@ export default function PaniniAlbumCWC2025() {
     };
     loadDarkMode();
   }, []);
+
+  // ── Load progress of other projects (Otros Proyectos) ─────────────────────
+  useEffect(() => {
+    if (currentView !== 'otros-proyectos' || !db) return;
+    let cancelled = false;
+    const fetchProgress = async () => {
+      const progressData = {};
+      for (const [id, total] of Object.entries(OTROS_PROYECTOS_TOTALS)) {
+        if (id === albumConfig.id) continue;
+        try {
+          const snap = await getDoc(doc(db, 'albumProgress', id));
+          if (snap.exists()) {
+            const stickers = snap.data()?.stickers || {};
+            const pegadas = Object.values(stickers).filter(v => v === true || v === 'repeated').length;
+            progressData[id] = { pegadas, total, pct: Math.round((pegadas / total) * 100) };
+          } else {
+            progressData[id] = null;
+          }
+        } catch (_) {
+          progressData[id] = null;
+        }
+      }
+      if (!cancelled) setOtrosProyectosProgress(progressData);
+    };
+    fetchProgress();
+    return () => { cancelled = true; };
+  }, [currentView]);
 
   // ── Load progress history ─────────────────────────────────────────────────
   useEffect(() => {
@@ -949,17 +987,50 @@ export default function PaniniAlbumCWC2025() {
             <div className={`rounded-3xl p-6 sm:p-8 shadow-xl max-w-2xl mx-auto transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-white' : 'bg-white'}`}>
               <h2 className="text-3xl font-black italic uppercase mb-6">Otros Proyectos</h2>
               <div className="flex flex-col gap-4">
-                {proyectosVisibles.map(proyecto => (
-                  <button
-                    key={proyecto.id}
-                    onClick={() => { window.location.href = proyecto.url; }}
-                    style={getProyectoStyle(proyecto.style)}
-                    className="rounded-3xl p-8 shadow-xl w-full text-left active:scale-95 transition-transform font-black"
-                  >
-                    <div className="text-3xl font-black italic uppercase">{proyecto.label}</div>
-                  </button>
-                ))}
+                {proyectosVisibles.map(proyecto => {
+                  const progress = otrosProyectosProgress[proyecto.id];
+                  return (
+                    <button
+                      key={proyecto.id}
+                      onClick={() => { window.location.href = proyecto.url; }}
+                      style={getProyectoStyle(proyecto.style)}
+                      className="rounded-3xl p-8 shadow-xl w-full text-left active:scale-95 transition-transform font-black"
+                    >
+                      <div className="text-3xl font-black italic uppercase">{proyecto.label}</div>
+                      {progress === undefined ? (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' }} />
+                          <div style={{ fontSize: 11, marginTop: 3, opacity: 0.7, textAlign: 'right' }}>cargando...</div>
+                        </div>
+                      ) : progress && (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${progress.pct}%`, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 2, transition: 'width 0.6s ease' }} />
+                          </div>
+                          <div style={{ fontSize: 11, marginTop: 3, opacity: 0.85, textAlign: 'right' }}>
+                            {progress.pct}% · {progress.pegadas} pegadas
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+              {(() => {
+                const entries = Object.values(otrosProyectosProgress).filter(Boolean);
+                if (entries.length === 0) return null;
+                const totalPegadas = entries.reduce((sum, p) => sum + p.pegadas, 0);
+                const totalFaltantes = entries.reduce((sum, p) => sum + (p.total - p.pegadas), 0);
+                const totalStickersOtros = Object.entries(OTROS_PROYECTOS_TOTALS)
+                  .filter(([id]) => id !== albumConfig.id && otrosProyectosProgress[id])
+                  .reduce((sum, [, total]) => sum + total, 0);
+                const promedio = totalStickersOtros > 0 ? Math.round((totalPegadas / totalStickersOtros) * 100) : 0;
+                return (
+                  <div className={`mt-6 px-4 py-2.5 rounded-xl text-xs leading-relaxed ${darkMode ? 'bg-white/5 text-white/70' : 'bg-black/5 text-slate-600'}`}>
+                    * Colección completa · {promedio}% promedio · {totalPegadas.toLocaleString()} figuritas pegadas · {totalFaltantes.toLocaleString()} faltantes
+                  </div>
+                );
+              })()}
               <button
                 onClick={() => setCurrentView('home')}
                 className={`mt-6 px-6 py-3 rounded-2xl font-black transition-colors duration-300 ${darkMode ? 'bg-yellow-500 text-slate-900' : 'bg-amber-700 text-white'}`}
