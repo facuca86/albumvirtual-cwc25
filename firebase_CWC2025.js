@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, arrayUnion } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBqRvXmDjKRo5kye39hGeh0uW0tGoi5o7c",
@@ -17,7 +17,7 @@ export const db = hasFirebaseConfig
   ? getFirestore(initializeApp(firebaseConfig, 'cwc2025'))
   : null;
 
-export { doc, getDoc, setDoc, onSnapshot };
+export { doc, getDoc, setDoc, onSnapshot, arrayUnion };
 
 if (!hasFirebaseConfig) {
   console.warn('Firebase no está configurado. Se usará almacenamiento local en este navegador.');

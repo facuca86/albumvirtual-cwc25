@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { db, doc, getDoc, setDoc, onSnapshot } from './firebase_CWC2025';
+import { db, doc, getDoc, setDoc, onSnapshot, arrayUnion } from './firebase_CWC2025';
 import { playerNames } from './playerNames_CWC2025';
 import { teamThemes } from './teamThemes_CWC2025';
 import { albumConfig, codeToNumber, numberToCode } from './albumConfig_CWC2025';
 
-const LOCAL_STORAGE_KEY      = `${albumConfig.id}_stickers`;
-const LOCAL_STORAGE_DARK_KEY = `${albumConfig.id}_darkMode`;
+const LOCAL_STORAGE_KEY         = `${albumConfig.id}_stickers`;
+const LOCAL_STORAGE_DARK_KEY    = `${albumConfig.id}_darkMode`;
+const LOCAL_STORAGE_HISTORY_KEY = `${albumConfig.id}_progressHistory`;
 
 const ALBUM_OWNER    = albumConfig.owner;
 const VIEW_PARAM     = new URLSearchParams(window.location.search).get('view');
@@ -16,8 +17,41 @@ const teamData   = albumConfig.teamData;
 const teamGroups = albumConfig.teamGroups;
 const groups     = albumConfig.groups;
 
-const progressDocRef = db ? doc(db, 'albumProgress', albumConfig.id) : null;
-const settingsDocRef = db ? doc(db, 'albumSettings', albumConfig.id) : null;
+const progressDocRef        = db ? doc(db, 'albumProgress', albumConfig.id) : null;
+const settingsDocRef        = db ? doc(db, 'albumSettings', albumConfig.id) : null;
+const progressHistoryDocRef = db ? doc(db, 'albumProgressHistory', albumConfig.id) : null;
+
+const formatDateTime = (date) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+// Entradas guardadas antes de que existieran id/timestamp (versión previa de handleMarkProgress)
+// reciben acá un id/timestamp derivado, de forma determinística, para no perderlas al mergear.
+const parseDateLabel = (label) => {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/.exec(label || '');
+  if (!m) return null;
+  const [, d, mo, y, h, mi] = m;
+  return new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)).getTime();
+};
+
+const normalizeHistoryEntry = (entry) => {
+  if (!entry || (entry.id && entry.timestamp)) return entry;
+  return {
+    ...entry,
+    id: entry.id ?? `legacy-${entry.dateLabel}-${entry.completedCount}-${entry.remainingCount}`,
+    timestamp: entry.timestamp ?? parseDateLabel(entry.dateLabel) ?? 0,
+  };
+};
+
+const mergeHistoryEntries = (...lists) => {
+  const byId = new Map();
+  for (const raw of lists.flat()) {
+    const entry = normalizeHistoryEntry(raw);
+    if (entry && entry.id) byId.set(entry.id, entry);
+  }
+  return [...byId.values()].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+};
 
 const getThemeKey = (teamCode) =>
   albumConfig.sectionThemes[teamCode]?.themeKey ?? teamCode;
@@ -84,6 +118,7 @@ function getTeamForCode(code) {
 
 export default function PaniniAlbumCWC2025() {
   if (VIEW_PARAM === 'repetidas') return <RepeatidasView />;
+  if (VIEW_PARAM === 'faltan') return <FaltanView />;
 
   const [currentView, setCurrentView]           = useState('home');
   const [currentTeamIndex, setCurrentTeamIndex] = useState(0);
@@ -91,12 +126,17 @@ export default function PaniniAlbumCWC2025() {
   const [showStats, setShowStats]               = useState(false);
   const [importMessage, setImportMessage]       = useState('');
   const [showQR, setShowQR]                     = useState(false);
+  const [showFaltanQR, setShowFaltanQR]         = useState(false);
+  const [showExportTextFaltan, setShowExportTextFaltan] = useState(false);
   const [darkMode, setDarkMode]                 = useState(false);
   const [celebration, setCelebration]           = useState(null);
   const [justPastedCode, setJustPastedCode]     = useState(null);
   const [highlightCode, setHighlightCode]       = useState(null);
   const [searchOpen, setSearchOpen]             = useState(false);
   const [searchQuery, setSearchQuery]           = useState('');
+  const [progressHistory, setProgressHistory]   = useState([]);
+  const [showProgressHistory, setShowProgressHistory] = useState(false);
+  const [progressMessage, setProgressMessage]   = useState('');
   const isInitialLoad = useRef(true);
   const [repetidasSelected, setRepetidasSelected] = useState(new Set());
   const [repetidasPending, setRepetidasPending] = useState([]);
@@ -153,6 +193,48 @@ export default function PaniniAlbumCWC2025() {
       if (local !== null) setDarkMode(local === 'true');
     };
     loadDarkMode();
+  }, []);
+
+  // ── Load progress history ─────────────────────────────────────────────────
+  useEffect(() => {
+    const loadHistory = async () => {
+      let localEntries = [];
+      try {
+        const localData = localStorage.getItem(LOCAL_STORAGE_HISTORY_KEY);
+        if (localData) {
+          const parsed = JSON.parse(localData);
+          if (Array.isArray(parsed)) localEntries = parsed;
+        }
+      } catch (_) {}
+
+      let remoteEntries = null;
+      try {
+        if (progressHistoryDocRef) {
+          const snap = await getDoc(progressHistoryDocRef);
+          if (snap.exists() && Array.isArray(snap.data()?.entries)) {
+            remoteEntries = snap.data().entries;
+          }
+        }
+      } catch (error) {
+        console.error('Error loading progress history from Firestore:', error);
+      }
+
+      if (remoteEntries === null) {
+        setProgressHistory(localEntries.map(normalizeHistoryEntry));
+        return;
+      }
+
+      const merged = mergeHistoryEntries(localEntries, remoteEntries);
+      setProgressHistory(merged);
+      try { localStorage.setItem(LOCAL_STORAGE_HISTORY_KEY, JSON.stringify(merged)); } catch (_) {}
+
+      const remoteIds = new Set(remoteEntries.map(e => normalizeHistoryEntry(e).id));
+      const missingFromCloud = merged.filter(e => !remoteIds.has(e.id));
+      if (missingFromCloud.length > 0 && progressHistoryDocRef) {
+        try { await setDoc(progressHistoryDocRef, { entries: arrayUnion(...missingFromCloud) }, { merge: true }); } catch (_) {}
+      }
+    };
+    loadHistory();
   }, []);
 
   // ── Save progress ──────────────────────────────────────────────────────────
@@ -301,7 +383,40 @@ export default function PaniniAlbumCWC2025() {
   const completedCount    = Object.entries(completed).filter(([c,v]) => !c.startsWith(albumConfig.promoCodePrefix) && isCompletedSticker(v)).length;
   const repeatedCount     = Object.values(completed).filter(isRepeatedSticker).length;
   const completionPercent = Math.round((completedCount / TOTAL_STICKERS) * 100);
+  const remainingPercent  = 100 - completionPercent;
   const remainingCount    = Math.max(TOTAL_STICKERS - completedCount, 0);
+
+  const faltantesGrouped = useMemo(() => {
+    const byTeam = {};
+    for (const team of teams) {
+      const missing = getTeamCodes(team).filter((code) => !isCompletedSticker(completed[code]));
+      if (missing.length) byTeam[team] = missing;
+    }
+    return teams.filter(t => byTeam[t]).map(t => ({ team: t, info: teamData[t], codes: byTeam[t] }));
+  }, [completed]);
+
+  const handleMarkProgress = async () => {
+    const now = new Date();
+    const entry = {
+      id: `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: now.getTime(),
+      dateLabel:  formatDateTime(now),
+      percentCompleted: completionPercent,
+      percentRemaining: remainingPercent,
+      completedCount,
+      remainingCount,
+    };
+    const nextHistory = [...progressHistory, entry];
+    setProgressHistory(nextHistory);
+    try { localStorage.setItem(LOCAL_STORAGE_HISTORY_KEY, JSON.stringify(nextHistory)); } catch (_) {}
+    try {
+      if (progressHistoryDocRef) await setDoc(progressHistoryDocRef, { entries: arrayUnion(entry) }, { merge: true });
+    } catch (error) {
+      console.error('Error saving progress history to Firestore:', error);
+    }
+    setProgressMessage('✅ Progreso marcado');
+    setTimeout(() => setProgressMessage(''), 2000);
+  };
 
   const selectionTeams = albumConfig.competingTeams;
 
@@ -499,6 +614,10 @@ export default function PaniniAlbumCWC2025() {
               <span className="text-2xl">REPETIDAS</span><br/>
               <span className="text-sm font-medium opacity-70">Gestioná tus figuritas repetidas</span>
             </button>
+            <button onClick={() => setCurrentView('faltan')}
+              className={`rounded-3xl p-8 shadow-xl text-left active:scale-95 transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
+              <div className="text-3xl font-black italic uppercase">Me Faltan</div>
+            </button>
             <button onClick={() => setCurrentView('otros-proyectos')}
               className={`rounded-3xl p-8 shadow-xl text-left active:scale-95 transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-yellow-400' : 'bg-white'}`}>
               <div className="text-3xl font-black italic uppercase">Otros Proyectos</div>
@@ -624,6 +743,110 @@ export default function PaniniAlbumCWC2025() {
           </div>
         );
       })()}
+
+        {/* ME FALTAN */}
+        {currentView === 'faltan' && (
+          <div className={`rounded-3xl p-6 sm:p-8 shadow-xl max-w-2xl mx-auto transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-white' : 'bg-white'}`}>
+            <h2 className="text-3xl font-black italic uppercase mb-6">Me Faltan</h2>
+            {faltantesGrouped.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-4xl mb-3">🏆</div>
+                <div className="font-black text-xl">¡Álbum completo!</div>
+                <div className={`mt-2 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Ya tenés todas las figuritas.
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1 mb-4">
+                {faltantesGrouped.map(({ team, info, codes }) => (
+                  <div key={team} className={`rounded-2xl p-4 ${darkMode ? 'bg-[#2a1a00]' : 'bg-slate-50'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-2xl leading-none">{info?.flag || '🏳️'}</span>
+                      <div>
+                        <div className="font-black uppercase text-sm">{info?.name || team}</div>
+                        <div className={`text-[10px] uppercase tracking-wider ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>
+                          {codes.length} falta{codes.length !== 1 ? 'n' : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {codes.map(code => {
+                        const name = getPlayerNameForCode(code);
+                        return (
+                          <span key={code} className="bg-slate-500 text-white text-xs font-black px-2.5 py-1 rounded-lg">
+                            {code}{name !== code ? ` · ${name}` : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className={`mt-4 pt-4 border-t flex flex-wrap gap-3 ${darkMode ? 'border-[#3a2a00]' : 'border-slate-200'}`}>
+              <button
+                onClick={() => setShowExportTextFaltan(true)}
+                disabled={faltantesGrouped.length === 0}
+                className={`px-6 py-3 rounded-2xl font-black transition-colors ${faltantesGrouped.length > 0 ? 'bg-blue-600 text-white' : darkMode ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+              >
+                EXPORTAR TEXTO
+              </button>
+              <button
+                onClick={() => setShowFaltanQR(true)}
+                className="bg-amber-700 text-white px-6 py-3 rounded-2xl font-black"
+              >
+                COMPARTIR QR
+              </button>
+              <button onClick={() => setCurrentView('home')}
+                className={`px-6 py-3 rounded-2xl font-black ${darkMode ? 'bg-slate-600 text-white' : 'bg-slate-300 text-slate-800'}`}>
+                ← VOLVER
+              </button>
+            </div>
+            {showExportTextFaltan && (() => {
+              const lines = faltantesGrouped.map(({ team, info, codes }) => {
+                const flag = info?.flag || '';
+                const name = info?.name || team;
+                const stickers = codes.map(code => {
+                  const n = getPlayerNameForCode(code);
+                  return n !== code ? `${code} (${n})` : code;
+                }).join(', ');
+                return `${flag} ${name}: ${stickers}`;
+              });
+              const text = `Figuritas que le faltan a ${ALBUM_OWNER} - FIFA Club World Cup 2025\n\n${lines.join('\n')}`;
+              return (
+                <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+                  <div className={`rounded-3xl p-6 shadow-2xl w-full max-w-lg ${darkMode ? 'bg-[#1e1400] text-white' : 'bg-white'}`}>
+                    <h3 className="text-xl font-black mb-1">Exportar faltantes</h3>
+                    <p className={`text-xs mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Copiá el texto para pegarlo en WhatsApp o un correo
+                    </p>
+                    <textarea
+                      readOnly
+                      value={text}
+                      rows={Math.min(lines.length + 3, 14)}
+                      onClick={e => e.target.select()}
+                      className={`w-full rounded-2xl p-4 text-sm font-mono resize-none border outline-none ${darkMode ? 'bg-slate-800 text-white border-slate-600' : 'bg-slate-50 text-slate-800 border-slate-200'}`}
+                    />
+                    <div className="flex gap-3 mt-4">
+                      <button
+                        onClick={() => navigator.clipboard.writeText(text)}
+                        className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-2xl font-black"
+                      >
+                        COPIAR
+                      </button>
+                      <button
+                        onClick={() => setShowExportTextFaltan(false)}
+                        className={`flex-1 px-4 py-3 rounded-2xl font-black ${darkMode ? 'bg-[#2a1a00] text-white' : 'bg-slate-200 text-slate-800'}`}
+                      >
+                        CERRAR
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* OTROS PROYECTOS */}
         {currentView === 'otros-proyectos' && (() => {
@@ -895,6 +1118,11 @@ export default function PaniniAlbumCWC2025() {
             <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-[#3a2a00]' : 'border-slate-200'} flex flex-wrap gap-3`}>
               <button onClick={() => { setShowStats(false); setCurrentView('stats-selections'); }}
                 className="bg-amber-700 text-white px-6 py-3 rounded-2xl font-black">Estadísticas Clubes</button>
+              <button onClick={handleMarkProgress}
+                className="bg-purple-600 text-white px-6 py-3 rounded-2xl font-black">Marcar Progreso</button>
+              <button onClick={() => { setShowStats(false); setShowProgressHistory(true); }}
+                className="bg-orange-500 text-white px-6 py-3 rounded-2xl font-black">Ver Progreso</button>
+              {progressMessage && <span className="w-full text-green-600 font-black">{progressMessage}</span>}
               <button onClick={() => setShowStats(false)}
                 className={`px-6 py-3 rounded-2xl font-black ${darkMode ? 'bg-[#3a2a00] text-white' : 'bg-slate-300 text-slate-800'}`}>Cerrar</button>
             </div>
@@ -902,7 +1130,16 @@ export default function PaniniAlbumCWC2025() {
         </div>
       )}
 
+      {showProgressHistory && (
+        <ProgressHistoryModal
+          history={progressHistory}
+          darkMode={darkMode}
+          onClose={() => setShowProgressHistory(false)}
+        />
+      )}
+
       {showQR      && <QRModal onClose={() => setShowQR(false)} />}
+      {showFaltanQR && <QRModal url={window.location.origin + window.location.pathname + '?view=faltan'} title="Me Faltan" onClose={() => setShowFaltanQR(false)} />}
       {celebration && <CelebrationModal celebration={celebration} teamData={teamData} teamThemes={teamThemes} getThemeKey={getThemeKey} getTeamConfettiColors={getTeamConfettiColors} onClose={() => setCelebration(null)} />}
     </div>
   );
@@ -1172,24 +1409,164 @@ function Sticker({ sticker, onToggle, currentTeam, darkMode = false, justPasted 
 // ═══════════════════════════════════════════════════════════════════════════════
 // QRModal
 // ═══════════════════════════════════════════════════════════════════════════════
-function QRModal({ onClose }) {
+function QRModal({ onClose, url, title }) {
   const qrRef = useRef(null);
-  const url   = window.location.origin + window.location.pathname + '?view=repetidas';
+  const qrUrl = url || (window.location.origin + window.location.pathname + '?view=repetidas');
 
   useEffect(() => {
     if (qrRef.current && window.QRCode) {
-      new window.QRCode(qrRef.current, { text: url, width: 200, height: 200 });
+      new window.QRCode(qrRef.current, { text: qrUrl, width: 200, height: 200 });
     }
   }, []);
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl p-6 shadow-2xl flex flex-col items-center gap-4 max-w-xs w-full">
-        <h3 className="text-lg font-black italic uppercase">Figuritas Repetidas</h3>
+        <h3 className="text-lg font-black italic uppercase">{title || 'Figuritas Repetidas'}</h3>
         <div ref={qrRef} />
-        <p className="text-xs text-slate-400 text-center break-all">{url}</p>
+        <p className="text-xs text-slate-400 text-center break-all">{qrUrl}</p>
         <button onClick={onClose} className="bg-amber-700 text-white px-6 py-3 rounded-2xl font-black w-full">Cerrar</button>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ProgressHistoryModal
+// ═══════════════════════════════════════════════════════════════════════════════
+function ProgressHistoryModal({ history, darkMode, onClose }) {
+  const rows = [...history].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+      <div className={`rounded-3xl p-6 sm:p-8 shadow-2xl w-full max-w-2xl transition-colors duration-300 ${darkMode ? 'bg-[#1e1400] text-white' : 'bg-white'}`}>
+        <h3 className="text-2xl font-black italic uppercase mb-6">Ver Progreso</h3>
+        {rows.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="text-4xl mb-3">📊</div>
+            <div className="font-black text-xl">Todavía no hay registros</div>
+            <div className={`mt-2 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              Usá "Marcar Progreso" para guardar una foto de tu avance.
+            </div>
+          </div>
+        ) : (
+          <div className="max-h-[60vh] overflow-auto rounded-2xl border border-slate-300/30">
+            <table className="w-full text-sm">
+              <thead className={`sticky top-0 ${darkMode ? 'bg-[#1a1200]' : 'bg-slate-100'}`}>
+                <tr className="text-left font-black uppercase text-xs">
+                  <th className="px-3 py-2">Fecha y Hora</th>
+                  <th className="px-3 py-2 text-right">% Completado</th>
+                  <th className="px-3 py-2 text-right">% Restante</th>
+                  <th className="px-3 py-2 text-right">Completadas</th>
+                  <th className="px-3 py-2 text-right">Restantes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((entry) => (
+                  <tr key={entry.id ?? entry.dateLabel} className={`border-t ${darkMode ? 'border-[#3a2a00]' : 'border-slate-200'}`}>
+                    <td className="px-3 py-2 font-black whitespace-nowrap">{entry.dateLabel}</td>
+                    <td className="px-3 py-2 text-right">{entry.percentCompleted}%</td>
+                    <td className="px-3 py-2 text-right">{entry.percentRemaining}%</td>
+                    <td className="px-3 py-2 text-right">{entry.completedCount}</td>
+                    <td className="px-3 py-2 text-right">{entry.remainingCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button onClick={onClose}
+            className={`px-6 py-3 rounded-2xl font-black ${darkMode ? 'bg-slate-600 text-white' : 'bg-slate-300 text-slate-800'}`}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FaltanView
+// ═══════════════════════════════════════════════════════════════════════════════
+function FaltanView() {
+  const [stickerData, setStickerData] = useState(null);
+
+  useEffect(() => {
+    const loadFromLocal = () => {
+      try {
+        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+        setStickerData(local ? JSON.parse(local) : {});
+      } catch { setStickerData({}); }
+    };
+
+    const load = async () => {
+      try {
+        if (progressDocRef) {
+          const snap = await getDoc(progressDocRef);
+          if (snap.exists()) { setStickerData(snap.data()?.stickers || {}); return; }
+        }
+        loadFromLocal();
+      } catch { loadFromLocal(); }
+    };
+    load();
+  }, []);
+
+  const grouped = useMemo(() => {
+    if (!stickerData) return [];
+    const byTeam = {};
+    for (const team of teams) {
+      const missing = getTeamCodes(team).filter((code) => {
+        const v = stickerData[code];
+        return v !== true && v !== 'repeated';
+      });
+      if (missing.length) byTeam[team] = missing;
+    }
+    return teams.filter(t => byTeam[t]).map(t => ({ team: t, info: teamData[t], codes: byTeam[t] }));
+  }, [stickerData]);
+
+  if (!stickerData) {
+    return (
+      <div className="min-h-screen bg-[#7a5c00] flex items-center justify-center">
+        <div className="text-white font-black text-xl">Cargando...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#7a5c00]">
+      <header className="bg-white shadow-sm sticky top-0 z-50">
+        <div className="max-w-2xl mx-auto px-4 py-3">
+          <h1 className="text-lg font-black italic uppercase text-slate-800">Figuritas que le faltan a {ALBUM_OWNER}</h1>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest">{albumConfig.repetidasSubtitle}</p>
+        </div>
+      </header>
+      <main className="max-w-2xl mx-auto px-4 py-5 space-y-3">
+        {grouped.length === 0 ? (
+          <div className="bg-white rounded-3xl p-8 text-center text-slate-800">
+            <div className="text-4xl mb-3">🏆</div>
+            <div className="font-black text-xl">¡Álbum completo!</div>
+            <div className="text-slate-500 mt-2 text-sm">Ya tiene todas las figuritas.</div>
+          </div>
+        ) : grouped.map(({ team, info, codes }) => (
+          <div key={team} className="bg-white rounded-2xl p-4 shadow">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl leading-none">{info?.flag || '🏳️'}</span>
+              <div>
+                <div className="font-black uppercase text-sm text-slate-800">{info?.name || team}</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider">{codes.length} falta{codes.length !== 1 ? 'n' : ''}</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {codes.map(code => {
+                const name = getPlayerNameForCode(code);
+                return (
+                  <span key={code} className="bg-slate-500 text-white text-xs font-black px-2.5 py-1 rounded-lg">
+                    {code}{name !== code ? ` · ${name}` : ''}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </main>
     </div>
   );
 }
