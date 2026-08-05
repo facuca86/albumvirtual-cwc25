@@ -22,7 +22,7 @@ const settingsDocRef        = db ? doc(db, 'albumSettings', albumConfig.id) : nu
 const progressHistoryDocRef = db ? doc(db, 'albumProgressHistory', albumConfig.id) : null;
 
 const OTROS_PROYECTOS_TOTALS = {
-  paniniWorldCup2026: 981,
+  paniniWorldCup2026: 980,
   paniniWorldCup2022: 638,
   paniniCWC2025: 550,
   paniniRussia2018: 670,
