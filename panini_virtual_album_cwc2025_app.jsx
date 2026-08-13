@@ -148,6 +148,7 @@ export default function PaniniAlbumCWC2025() {
   const [showProgressHistory, setShowProgressHistory] = useState(false);
   const [progressMessage, setProgressMessage]   = useState('');
   const isInitialLoad = useRef(true);
+  const skipNextCloudSave = useRef(false);
   const [repetidasSelected, setRepetidasSelected] = useState(new Set());
   const [repetidasPending, setRepetidasPending] = useState([]);
   const [repetidasConfirmSelected, setRepetidasConfirmSelected] = useState(false);
@@ -180,6 +181,10 @@ export default function PaniniAlbumCWC2025() {
         loadFromLocal();
       } catch (error) {
         console.error('Error loading album progress from Firestore:', error);
+        // No pudimos confirmar el estado real en la nube: si el respaldo local
+        // dispara un guardado, no lo subamos a Firestore, para no pisar progreso
+        // sincronizado desde otro dispositivo con datos locales viejos/incompletos.
+        skipNextCloudSave.current = true;
         loadFromLocal();
       } finally {
         isInitialLoad.current = false;
@@ -284,6 +289,10 @@ export default function PaniniAlbumCWC2025() {
     const saveProgress = async () => {
       if (isInitialLoad.current) return;
       try { localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(completed)); } catch (_) {}
+      if (skipNextCloudSave.current) {
+        skipNextCloudSave.current = false;
+        return;
+      }
       // completedCount se guarda ya calculado junto con stickers para que la vista
       // "Otros Proyectos" de otros álbumes no tenga que bajar el mapa completo de
       // stickers de este álbum y contarlo cliente-side en cada carga.
