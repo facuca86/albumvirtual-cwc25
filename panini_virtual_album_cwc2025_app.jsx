@@ -36,6 +36,10 @@ const formatDateTime = (date) => {
   return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+// Porcentaje redondeado a 2 decimales (ej: 33.33), para mostrar precisión con álbumes grandes.
+const calcPercent = (numerator, denominator) => Math.round((numerator / denominator) * 10000) / 100;
+const formatPercent = (value) => value.toFixed(2);
+
 // Entradas guardadas antes de que existieran id/timestamp (versión previa de handleMarkProgress)
 // reciben acá un id/timestamp derivado, de forma determinística, para no perderlas al mergear.
 const parseDateLabel = (label) => {
@@ -442,8 +446,8 @@ export default function PaniniAlbumCWC2025() {
   // ── Stats ──────────────────────────────────────────────────────────────────
   const completedCount    = Object.entries(completed).filter(([c,v]) => !c.startsWith(albumConfig.promoCodePrefix) && isCompletedSticker(v)).length;
   const repeatedCount     = Object.values(completed).filter(isRepeatedSticker).length;
-  const completionPercent = Math.round((completedCount / TOTAL_STICKERS) * 100);
-  const remainingPercent  = 100 - completionPercent;
+  const completionPercent = calcPercent(completedCount, TOTAL_STICKERS);
+  const remainingPercent  = Math.round((100 - completionPercent) * 100) / 100;
   const remainingCount    = Math.max(TOTAL_STICKERS - completedCount, 0);
 
   const faltantesGrouped = useMemo(() => {
@@ -595,7 +599,7 @@ export default function PaniniAlbumCWC2025() {
               {albumConfig.subtitle}
             </p>
             <div className={`mt-0.5 sm:mt-2 text-xs sm:text-sm font-black ${darkMode ? 'text-yellow-400' : 'text-amber-800'}`}>
-              {completionPercent}% COMPLETADO
+              {formatPercent(completionPercent)}% COMPLETADO
             </div>
             <div className={`mt-1 sm:mt-2 h-2 sm:h-2.5 w-24 sm:w-56 rounded-full overflow-hidden ${darkMode ? 'bg-[#2a1a00]' : 'bg-slate-200'}`}>
               <div
@@ -1193,7 +1197,7 @@ export default function PaniniAlbumCWC2025() {
             <div className="space-y-3 font-black">
               <div>Figuritas completadas: {completedCount} / {TOTAL_STICKERS}</div>
               <div>
-                <div className="flex justify-between mb-1"><span>Progreso</span><span>{completionPercent}%</span></div>
+                <div className="flex justify-between mb-1"><span>Progreso</span><span>{formatPercent(completionPercent)}%</span></div>
                 <div className={`w-full rounded-full h-3 ${darkMode ? 'bg-[#2a1a00]' : 'bg-slate-200'}`}>
                   <div className="bg-yellow-500 h-3 rounded-full transition-all duration-500" style={{ width: `${completionPercent}%` }} />
                 </div>
@@ -1559,8 +1563,8 @@ function ProgressHistoryModal({ history, darkMode, onClose }) {
                 {rows.map((entry) => (
                   <tr key={entry.id ?? entry.dateLabel} className={`border-t ${darkMode ? 'border-[#3a2a00]' : 'border-slate-200'}`}>
                     <td className="px-3 py-2 font-black whitespace-nowrap">{entry.dateLabel}</td>
-                    <td className="px-3 py-2 text-right">{entry.percentCompleted}%</td>
-                    <td className="px-3 py-2 text-right">{entry.percentRemaining}%</td>
+                    <td className="px-3 py-2 text-right">{formatPercent(entry.percentCompleted)}%</td>
+                    <td className="px-3 py-2 text-right">{formatPercent(entry.percentRemaining)}%</td>
                     <td className="px-3 py-2 text-right">{entry.completedCount}</td>
                     <td className="px-3 py-2 text-right">{entry.remainingCount}</td>
                   </tr>
